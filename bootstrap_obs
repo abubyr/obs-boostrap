@@ -1,0 +1,54 @@
+#!/bin/bash
+# ENV variables:
+# OBS_SOURCE   - OBS server API URL to copy from (source)
+# OBS_DEST     - OBS server API URL to copy to (destination)
+# PROJECT_LIST - list of projects to copy. Should contain all possible dependenices
+#PROJECT_LIST=$(osc -A $OBS_SOURCE ls)
+# OBS (osc) user which performs copying
+if [[ -z "$OBS_SOURCE" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable OBS_SOURCE, which should contain OBS server API URL to copy from (source)!"
+	exit 1
+fi
+if [[ -z "$OBS_DEST" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable OBS_DEST, which should contain OBS server API URL to copy to (destination)!"
+	exit 1
+fi
+if [[ -z "$PROJECT_LIST" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable PROJECT_LIST - list of projects to copy (should contain all possible dependenices)!"
+	exit 1
+fi
+echo -e "######################################\n
+Link to source OBS (OBS_SOURCE) = $OBS_SOURCE. Link to destination OBS (OBS_DEST) = $OBS_DEST. List of projects to copy (PROJECT_LIST) = $PROJECT_LIST \n
+#####################################\n"
+for PRJ in $PROJECT_LIST; do
+# copy prj and prjconf of source project
+	osc -A $OBS_SOURCE meta prj $PRJ > $PRJ.prj
+	osc -A $OBS_SOURCE meta prjconf $PRJ > $PRJ.prjconf
+# create project with corrected metadata on destination OBS
+	osc -A $OBS_DEST meta prj -F - $PRJ << OBSEOF
+$(sed '/path project/d' $PRJ.prj)
+OBSEOF
+	if [[ "$?" != "0" ]]; then
+		echo "Project wasn't created. Exitting..."
+		rm -f $PRJ.{prj,prjconf}
+		exit 1
+	fi
+# set up prjconf on destination projects
+	osc -A $OBS_DEST meta prjconf -F $PRJ.prjconf $PRJ
+done
+for PRJ in $PROJECT_LIST; do
+# set up vanilla from source metadata on destination projects
+	osc -A $OBS_DEST meta prj -F $PRJ.prj $PRJ
+# remove temporary files with project configs
+	rm -f $PRJ.{prj,prjconf}
+# copy packages from one project to another using osc copypac command
+	for pkg in $(osc -A $OBS_SOURCE ls $PRJ); do
+		osc -A $OBS_SOURCE copypac -t $OBS_DEST $PRJ $pkg $PRJ
+		# copy package metadata
+		osc -A $OBS_SOURCE meta pkg $PRJ $pkg > $pkg.pkg
+		# set up pkg meta
+		osc -A $OBS_DEST meta pkg -F $pkg.pkg $PRJ $pkg
+		# clean temporary file
+		rm -f $pkg.pkg
+	done
+done
