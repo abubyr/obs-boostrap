@@ -1,0 +1,61 @@
+#!/bin/bash -x
+OBS_DST=$OBS_DEST
+OBS_SRC=$OBS_SOURCE
+PROJ_LIST=$PROJECT_LIST
+find_source_project()
+{
+	local proj=$1
+	#local package=$2
+	local temp_dir="/tmp/checkout"
+	echo "Trying to determine root project for package $package in project $proj"
+	if ! mkdir -p $temp_dir; then  echo "Cannot create temporary dir. Exitting"; return 1; fi
+	# checkout package	
+	osc -A $OBS_SRC checkout $proj $package -o $temp_dir
+	if [[ ! -e "$temp_dir/_aggregate" ]]
+	then
+		echo "ERROR: Package $package in project $proj doesn't contain _aggregate file"
+		rm -rf $temp_dir
+		return 1
+	fi
+	# in _aggregate file find project aggregated from
+	src_prj="$(grep "^.*aggregate.*project" $temp_dir/_aggregate | sed 's|^.*aggregate.*project="||g;s|">.*||g')"
+	# in _aggregate file find package name aggregated to
+	package="$(grep "^.*<package>.*</package>" $temp_dir/_aggregate | sed 's|^.*<package>||g;s|<.*||g')"
+	rm -rf $temp_dir
+	if ! $(osc -A $OBS_SRC ls $src_prj &>/dev/null); then
+		echo "ERROR: Source project $src_prj for aggregated package $pkg doesn't exist!"
+		return 1
+	fi
+	if [[ "$(osc -A $OBS_SRC ls $src_prj $package)" == "_aggregate" ]]; then
+		find_source_project $src_prj
+	fi
+	return 0
+}
+for PROJECT in $PROJ_LIST; do
+for pkg in $(osc -A $OBS_DST ls $PROJECT); do
+	if [[ "$(osc -A $OBS_DST ls $PROJECT $pkg)" == "_aggregate" ]]; then
+		package=$pkg
+		find_source_project $PROJECT
+		if [[ "$?" == 0 && -n "$src_prj" ]]; then
+			# delete old package
+			osc -A $OBS_DST rdelete $PROJECT $pkg -m "$pkg package aggregation is replaced on usual package"
+			# copy new one from real source project on source OBS server
+			osc -A $OBS_SRC copypac -t $OBS_DST $src_prj $package $PROJECT $pkg
+			# copy new package metadata
+			#osc -A $OBS_SRC meta pkg $src_prj $pkg > $pkg.newpkg
+			# set up pkg meta
+			osc -A $OBS_DST meta pkg -F - $PROJECT $pkg <<METAEOF
+<package name="$pkg" project="$PROJECT">
+  <title></title>
+  <description></description>
+</package>
+METAEOF
+			# clean temporary file
+			#rm -f $pkg.newpkg
+		else
+			echo "ERROR: Root project for aggregated package $pkg wasn't determined"
+			continue
+		fi
+	fi
+done
+done

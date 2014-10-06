@@ -1,0 +1,15 @@
+#!/bin/bash
+OBS_SERVER=$OBS_SOURCE
+OBS_TO_COPY_FROM=$OBS_SOURCE
+PROJECT=$PRJ
+for pkg in $(osc -A $OBS_SERVER ls $PROJECT); do
+	if [[ "$(osc -A $OBS_SERVER ls $PROJECT $pkg)" == "_aggregate" ]]; then
+		# get pkg meta
+		osc -A $OBS_SERVER meta pkg $PROJECT $pkg > $pkg.oldpkg
+		# in meta find project aggregated from
+		src_prj="$(grep "Aggregated" $pkg.oldpkg | sed 's|^.*Aggregated from ||g;s|<.*||g')"
+		echo "$PROJECT : $pkg. Source project: $src_prj"
+		# remove temporary file with old metadata
+		rm -f $pkg.oldpkg
+	fi
+done

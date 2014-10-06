@@ -1,0 +1,54 @@
+#!/bin/bash -x
+INDEX_URL=$1
+PROJECT=$2
+REPO_NAME=$3
+PACKAGE_TYPE="RPM"
+ARCH="x86_64"
+if [[ -z "$INDEX_URL" || -z "$PROJECT" || -z "$REPO_NAME" ]]; then
+	echo -e "Invalid usage\nUsage: $(basename $0) <repo_index(primary.xml.gz or Packages.bz2)_url> <target_project_name> <repo_name> [<package_type>=RPM] [<arch>=x86_64]\nFor RPM repos specify repository baseurl, for DEB repos - exact link to Packages.bz2 file\n"
+	exit 1
+fi
+if [[ -n "$4" ]]; then	
+	PACKAGE_TYPE=$4
+fi
+case "$PACKAGE_TYPE" in
+	"RPM"|"rpm")
+		INDEX_TYPE="primary.xml.gz"
+		# determine exact path to primary.xml.gz file in repodata
+		INDEX_URL="${INDEX_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz')"
+		UNZIPPER="gunzip"
+		;;
+	"DEB"|"deb")
+		INDEX_TYPE="Packages.bz2"
+		UNZIPPER="bunzip2"
+		;;
+	*)
+		echo "Invalid package_type. Should be either RPM or DEB"
+		exit 1
+		;;
+esac
+if [[ -n "$5" ]]; then
+	ARCH=$5
+fi
+# copy prj and prjconf of target/external project
+osc -A $OBS_SOURCE meta prj $PROJECT > $PROJECT.prj
+osc -A $OBS_SOURCE meta prjconf $PROJECT > $PROJECT.prjconf
+# create target/external project on destination OBS
+if ! osc -A $OBS_DEST meta prj -F $PROJECT.prj $PROJECT; then 
+	echo "Project wasn't created. Exitting..."
+	rm -f $PROJECT.{prj,prjconf}
+	exit 1
+fi
+osc -A $OBS_DEST meta prjconf -F $PROJECT.prjconf $PROJECT
+# remove temporary files with project configs
+rm -f $PROJECT.{prj,prjconf}
+if [[ ! -d /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full ]]; then
+	if ! mkdir -p /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full; then echo ":full directory for project $PROJECT wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/*
+fi
+[[ -e /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full.solv ]] && rm -f /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full.solv
+wget -O "/srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/$INDEX_TYPE" $INDEX_URL
+$UNZIPPER "/srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/$INDEX_TYPE"
+chown -R obsrun:obsrun "/srv/obs/build/$PROJECT"
+obs_admin --rescan-repository $PROJECT $REPO_NAME $ARCH

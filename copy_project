@@ -1,0 +1,19 @@
+#!/bin/bash -x
+# copy prj and prjconf of source project
+echo "Copying project $PRJ ..."
+osc -A $OBS_SOURCE meta prj $PRJ > $PRJ.prj
+osc -A $OBS_SOURCE meta prjconf $PRJ > $PRJ.prjconf
+# create project on destination OBS
+if ! osc -A $OBS_DEST meta prj -F $PRJ.prj $PRJ; then 
+	echo "Project wasn't created. Exitting..."
+	rm -f $PRJ.{prj,prjconf}
+	exit 1
+fi
+osc -A $OBS_DEST meta prjconf -F $PRJ.prjconf $PRJ
+# remove temporary files with project configs
+rm -f $PRJ.{prj,prjconf}
+# copy packages from one project to another using osc copypac command
+for pkg in $PKG_LIST; do
+	echo "Copying package $pkg from project $PRJ"
+	osc -A $OBS_SOURCE copypac -t $OBS_DEST $PRJ $pkg $PRJ
+done
