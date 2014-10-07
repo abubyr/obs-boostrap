@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 INDEX_URL=$1
 PROJECT=$2
 REPO_NAME=$3
@@ -15,7 +15,7 @@ case "$PACKAGE_TYPE" in
 	"RPM"|"rpm")
 		INDEX_TYPE="primary.xml.gz"
 		# determine exact path to primary.xml.gz file in repodata
-		INDEX_URL="${INDEX_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz')"
+		INDEX_URL="${INDEX_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
 		UNZIPPER="gunzip"
 		;;
 	"DEB"|"deb")
@@ -42,6 +42,8 @@ fi
 #osc -A $OBS_DEST meta prjconf -F $PROJECT.prjconf $PROJECT
 # remove temporary files with project configs
 #rm -f $PROJECT.{prj,prjconf}
+echo "$INDEX_URL"
+exit 1
 if [[ ! -d /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full ]]; then
 	if ! mkdir -p /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full; then echo ":full directory for project $PROJECT wasn't created. Exitting..."; exit 2; fi
 else

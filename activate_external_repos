@@ -15,7 +15,7 @@ case "$PACKAGE_TYPE" in
 	"RPM"|"rpm")
 		INDEX_TYPE="primary.xml.gz"
 		# determine exact path to primary.xml.gz file in repodata
-		INDEX_URL="${INDEX_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz')"
+		INDEX_URL="${INDEX_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
 		UNZIPPER="gunzip"
 		;;
 	"DEB"|"deb")
