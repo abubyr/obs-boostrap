@@ -42,8 +42,6 @@ fi
 #osc -A $OBS_DEST meta prjconf -F $PROJECT.prjconf $PROJECT
 # remove temporary files with project configs
 #rm -f $PROJECT.{prj,prjconf}
-echo "$INDEX_URL"
-exit 1
 if [[ ! -d /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full ]]; then
 	if ! mkdir -p /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full; then echo ":full directory for project $PROJECT wasn't created. Exitting..."; exit 2; fi
 else
