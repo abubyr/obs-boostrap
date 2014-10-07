@@ -16,4 +16,10 @@ rm -f $PRJ.{prj,prjconf}
 for pkg in $PKG_LIST; do
 	echo "Copying package $pkg from project $PRJ"
 	osc -A $OBS_SOURCE copypac -t $OBS_DEST $PRJ $pkg $PRJ
+	# copy package metadata
+	osc -A $OBS_SOURCE meta pkg $PRJ $pkg > $pkg.pkg
+	# set up pkg meta
+	osc -A $OBS_DEST meta pkg -F $pkg.pkg $PRJ $pkg
+	# clean temporary file
+	rm -f $pkg.pkg
 done
