@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 INDEX_URL=$1
 PROJECT=$2
 REPO_NAME=$3
@@ -19,8 +19,8 @@ case "$PACKAGE_TYPE" in
 		UNZIPPER="gunzip"
 		;;
 	"DEB"|"deb")
-		INDEX_TYPE="Packages.bz2"
-		UNZIPPER="bunzip2"
+		INDEX_TYPE="Packages.gz"
+		UNZIPPER="gunzip"
 		;;
 	*)
 		echo "Invalid package_type. Should be either RPM or DEB"

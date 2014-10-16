@@ -1,4 +1,31 @@
 #!/bin/bash -x
+# ENV variables:
+# OBS_SOURCE   - OBS server API URL to copy from (source)
+# OBS_DEST     - OBS server API URL to copy to (destination)
+# PRJ - project for copy
+# PKG_LIST - list of packages to copy from project PRJ on OBS_SOURCE server
+# for copying all packages, set
+# PKG_LIST=$(osc -A $OBS_SOURCE ls $PRJ)
+if [[ -z "$OBS_SOURCE" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable OBS_SOURCE, which should contain OBS server API URL to copy from (source)!"
+	exit 1
+fi
+if [[ -z "$OBS_DEST" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable OBS_DEST, which should contain OBS server API URL to copy to (destination)!"
+	exit 1
+fi
+if [[ -z "$PRJ" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable PRJ - name of project for copying"
+	exit 1
+fi
+if [[ -z "$PKG_LIST" ]]; then
+	echo -e "Invalid usage.\nSet up environment variable PKG_LIST - list of packages to copy from project PRJ on OBS_SOURCE server"
+	exit 1
+fi
+echo -e "######################################\n
+Link to source OBS (OBS_SOURCE) = $OBS_SOURCE. Link to destination OBS (OBS_DEST) = $OBS_DEST. Project to copy (PRJ) = $PRJ\n
+######################################\n"
+
 # copy prj and prjconf of source project
 echo "Copying project $PRJ ..."
 osc -A $OBS_SOURCE meta prj $PRJ > $PRJ.prj

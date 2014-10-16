@@ -1,0 +1,48 @@
+#!/bin/bash
+# If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
+REPO_URL=$1
+LOCAL_MIRROR_PATH=$2
+ARCH=$3
+TEMP_DIR=$4
+if [[ -z "$REPO_URL" ]]; then
+	echo -e "Invalid usage\nUsage: $(basename $0) <source_repo_url>  [<local_mirror_path>] [<arch>=x86_64] [<temp_download_dir>=/data/imports]\n"
+	exit 1
+fi
+[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-osci-centos-mirror"
+if [[ -z "$ARCH" ]]; then
+	TEMP_DIR="/data/imports"
+	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
+fi
+if [[ -z "$ARCH" ]]; then
+	ARCH="x86_64"
+	echo -e "You didn't specify repo arch. $ARCH arch is assumed\n"
+fi
+if [[ ! -d "$TEMP_DIR" ]]; then
+	if ! mkdir -p "$TEMP_DIR"; then echo "Temporary directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $TEMP_DIR/*
+fi
+if [[ ! -d "$LOCAL_MIRROR_PATH" ]]; then
+	if ! mkdir -p "$LOCAL_MIRROR_PATH"/"$ARCH"; then echo "Local mirror directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $LOCAL_MIRROR_PATH/*
+	mkdir -p "$LOCAL_MIRROR_PATH"/"$ARCH"
+fi
+WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
+wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent --no-host-directories --cut-dirs="$WGET_CUT_DIRS" $REPO_URL
+# Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
+for pkg in "$DONT_REMOVE"
+do
+	mv $pkg-[0-9]* $LOCAL_MIRROR_PATH/$ARCH
+done
+# Remove openstack and fuel packages which will be built on OBS server
+for i in "$PKG_LIST" 
+do
+	rm -f "$TMP_DIR"/"*$i*.rpm"
+done
+mv "$TMP_DIR"/*.rpm $LOCAL_MIRROR_PATH/$ARCH
+pushd $LOCAL_MIRROR_PATH
+createrepo .
+popd
+chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
+rm -rf $TEMP_DIR
