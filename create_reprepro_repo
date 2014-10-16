@@ -1,0 +1,22 @@
+#!/bin/bash
+dist=precise
+project=$1
+export REPREPRO_BASE_DIR=/srv/obs/repos/$project/reprepro
+VERSION=`echo $project | cut -d"-" -f3`
+if ! [ -d $REPREPRO_BASE_DIR ]; then
+  mkdir -p $REPREPRO_BASE_DIR/conf
+  cat > $REPREPRO_BASE_DIR/conf/distributions <<EOF
+Origin: Mirantis
+Label: Mirantis FUEL
+Suite: unstable
+Codename: $dist
+Version: $VERSION
+Architectures: amd64 source i386
+Components: main
+Description: FUEL packages for Ubuntu 12.04 Precise Pangolin
+UDebComponents: main
+Contents: . .gz .bz2
+EOF
+fi
+for i in `find /srv/obs/repos/$project/ubuntu/ -name \*deb` ; do reprepro includedeb $dist $i; done
+for i in `find /srv/obs/build/$project/ubuntu/x86_64/:repo -name \*udeb` ; do reprepro includeudeb $dist $i; done
