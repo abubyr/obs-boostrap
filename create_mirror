@@ -26,18 +26,18 @@ fi
 case "$REPO_TYPE" in
 	"RPM"|"rpm")
 		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-centos-deps"
-		repo_init {
+		repo_init () {
 			mv "$TMP_DIR"/*.rpm $LOCAL_MIRROR_PATH/$ARCH
 			pushd $LOCAL_MIRROR_PATH
 			createrepo .
 			popd
 		}
 		REPO_DIR=$ARCH
-		DELIM='_'
+		DELIM='-'
 		;;
 	"DEB"|"deb")
 		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-ubuntu-deps"
-		repo_init {
+		repo_init () {
 			local dist=precise
 			export REPREPRO_BASE_DIR=$LOCAL_MIRROR_PATH/reprepro
 			local VERSION=`basename $LOCAL_MIRROR_PATH | cut -d"-" -f3`
@@ -60,7 +60,7 @@ EOF
 	    		for i in $(find $TMP_DIR -name \*udeb) ; do reprepro includeudeb $dist $i; done
 		}
 		REPO_DIR='reprepro'
-		DELIM='-'
+		DELIM='_'
 		;;
 	*)
 		echo "Invalid package_type. Should be either RPM or DEB"
@@ -76,18 +76,20 @@ else
 fi
 
 #WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
-wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror -nd $REPO_URL
+wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -nd $REPO_URL
 # Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
 mkdir -p /data/dont_rem_dir
-for pkg in "$DONT_REMOVE"
+for pkg in $DONT_REMOVE
 do
-	mv $TMP_DIR/$pkg$DELIM[0-9]*.{rpm,udeb,deb} /data/dont_rem_dir/
+	mv $TMP_DIR/$pkg$DELIM[0-9]* /data/dont_rem_dir/
 done
 # Remove openstack and fuel packages which will be built on OBS server
-for i in "$REMOVE_LIST"
+for i in $REMOVE_LIST
 do
-	rm -rf "$TMP_DIR"/"*$i*"
+	rm -rf "$TMP_DIR"/*$i*
 done
+mv /data/dont_rem_dir/* $TMP_DIR
+rm -rf /data/dont_rem_dir
+repo_init
 chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
 rm -rf $TEMP_DIR
-rm -rf /data/dont_rem_dir
