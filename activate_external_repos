@@ -23,7 +23,13 @@ while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
 			UBUNTU_REPO_COMPONENT=$OPTARG
 			;;
 		A)
-			OBS_SERV_URL=$OPTARG
+			OBS_SRV_URL=$OPTARG
+			;;
+		U)
+			OBS_USER=$OPTARG
+			;;
+		P)
+			OBS_PASS=$OPTARG
 			;;
 		\?)
 			echo "Invalid option: -$OPTARG. Use -h for help" >&2
@@ -40,6 +46,8 @@ while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
 -p <obs_project>     		- Mandatory. Name of OBS project for linking (activating).\n \
 -n <repository_name> 		- Mandatory. Desired name of OBS project's repository.\n \
 [-A <obs_url>]			- Optional. Target OBS server API URL. Default value: OBS_DEST env variable.\n \
+[-U <obs_user>]		- Optional. OBS API admin user. Default value: Admin.\n \
+[-P <obs_password>]		- Optional. OBS API admin user password. Default value: opensuse\n \
 [-t <repo_type>]     		- Optional. deb or rpm repository type. Default value: RPM.\n \
 [-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
 [-d <ubuntu_distro>=precise]	- Optional. UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
@@ -55,7 +63,7 @@ if [[ -z "$REPO_URL" || -z "$PROJECT" || -z "$REPO_NAME" ]]; then
 	echo "Invalid usage. <repo_url>, <obs-project> and <repository_name> arguments are mandatory. Use -h fo help."
 	exit 1
 fi
-[[ -z "$OBS_SERV_URL" ]] && OBS_SERV_URL=$OBS_DEST
+[[ -z "$OBS_SRV_URL" ]] && OBS_SRV_URL=$OBS_DEST
 [[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
 [[ -z "$ARCH" ]] && ARCH="x86_64"
 [[ -z "$UBUNTU_DISTRO" ]] && UBUNTU_DISTRO="precise"
@@ -79,6 +87,21 @@ case "$REPO_TYPE" in
 		exit 1
 		;;
 esac
+# add credentials to OBS server API if absent
+if ! grep $OBS_SRV_URL $HOME/.oscrc; then cat > $HOME/.oscrc <<OSCRCEOF
+[$OBS_SRV_URL]
+user = $OBS_USER
+pass = $OBS_PASS
+OSCRCEOF
+OBS_IP=${OBS_SRV_URL#*//}
+OBS_IP=${OBS_IP%/*}
+OBS_PORT=${OBS_IP##*:}
+OBS_IP=${OBS_IP%:*}
+[[ -z "$OBS_PORT" ]] && OBS_PORT='443'
+# automatically trust to OBS server certificate if not made yet
+if [ ! -f $HOME/.config/osc/trusted-certs/$OBS_IP_$OBS_PORT.* ]; then
+	echo 2 | osc -A $OBS_SRV_URL ls > /dev/null 2>&1
+fi
 # create target/external project on destination OBS
 if ! osc -A $OBS_DEST meta prj -F - $PROJECT <<EOF
 <project name="internal:ubuntu-osci-builddeps-5.1">
