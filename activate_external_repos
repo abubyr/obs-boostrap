@@ -104,13 +104,13 @@ if [ ! -f $HOME/.config/osc/trusted-certs/$OBS_IP_$OBS_PORT.* ]; then
 fi
 # create target/external project on destination OBS
 if ! osc -A $OBS_DEST meta prj -F - $PROJECT <<EOF
-<project name="internal:ubuntu-osci-builddeps-5.1">
+<project name="$PROJECT">
   <title/>
   <description/>
   <person userid="Admin" role="bugowner"/>
   <person userid="Admin" role="maintainer"/>
-  <download baseurl="$INDEX_URL" metafile="${INDEX_TYPE%.*}" mtype="$(echo $REPO_TYPE | tr '[:upper:]' '[:lower:]')md" arch="$ARCH"/>
-  <repository name="$UBUNTU_DISTRO-$UBUNTU_REPO_COMPONENT">
+  <download baseurl="$REPO_URL" metafile="${INDEX_TYPE%.*}" mtype="$(echo $REPO_TYPE | tr '[:upper:]' '[:lower:]')md" arch="$ARCH"/>
+  <repository name="$REPO_NAME">
     <arch>$ARCH</arch>
   </repository>
 </project>
