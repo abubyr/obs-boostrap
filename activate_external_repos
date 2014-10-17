@@ -36,14 +36,14 @@ while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
 		h)
 			echo -e "Usage: $(basename $0) [-A <obs_url>] -u <source_repo_url> -p <obs_project> -n <repository_name> [-t <repo_type>=RPM] [-a <arch>=x86_64] \
 [-d <ubuntu_distro>=precise] [-c <ubuntu_repo_component>=main]\n\n \
--u <source_repo_url> 		- URL of repository project connected to. Needed for downloading repo index files.\n \
--p <obs_project>     		- name of OBS project for linking (activating).\n \
--n <repository_name> 		- desired name of OBS project's repository.\n \
-[-A <obs_url>]			- target OBS server API URL. Default value: OBS_DEST env variable.\n \
-[-t <repo_type>]     		- deb or rpm repository. Default value: RPM.\n \
-[-a <arch>]          		- repository architecture. Default value: x86_64.\n \
-[-d <ubuntu_distro>=precise]	- UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
-[-c <ubuntu_repo_component>=main]-UBUNTU ONLY: Ubuntu repo component, e.g. main, universe, multiverse etc. Default value: main."
+-u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
+-p <obs_project>     		- Mandatory. Name of OBS project for linking (activating).\n \
+-n <repository_name> 		- Mandatory. Desired name of OBS project's repository.\n \
+[-A <obs_url>]			- Optional. Target OBS server API URL. Default value: OBS_DEST env variable.\n \
+[-t <repo_type>]     		- Optional. deb or rpm repository type. Default value: RPM.\n \
+[-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
+[-d <ubuntu_distro>=precise]	- Optional. UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
+[-c <ubuntu_repo_component>=main]-Optional. UBUNTU ONLY: Ubuntu repo component, e.g. main, universe, multiverse etc. Default value: main."
 				
 			exit
 			;;

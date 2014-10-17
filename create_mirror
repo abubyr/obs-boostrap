@@ -1,6 +1,6 @@
 #!/bin/bash -x
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
-while getopts ":u:t:p:a:d:h" FLAG; do
+while getopts ":u:t:p:a:da:v:h" FLAG; do
 	case $FLAG in
 		u)
 			REPO_URL=$OPTARG
@@ -17,6 +17,9 @@ while getopts ":u:t:p:a:d:h" FLAG; do
 		d)
 			TEMP_DIR=$OPTARG
 			;;
+		v)
+			FUEL_VER=$OPTARG
+			;;
 		\?)
 			echo "Invalid option: -$OPTARG. Use -h for help" >&2
 			exit 1
@@ -26,7 +29,17 @@ while getopts ":u:t:p:a:d:h" FLAG; do
 			exit 1
 			;;
 		h)
-			echo "Usage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM]  [-p <local_mirror_path>] [-a <arch>=x86_64] [-d <temp_download_dir>=/data/imports]"
+			echo -e "Usage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM] [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64] \
+[-d <temp_download_dir>=/data/imports]\n\n \
+-u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
+[-v <fuel_version>]     	- Optional. Version of FUEL. Default value: 5.1\n \
+[-t <repo_type>]     		- Optional. Choose deb or rpm repo type. Default value: RPM.\n \
+-p [<local_mirror_path>]	- Optional. Where to put repository mirror on OBS server.\n \
+				  Default values:\n \
+				  Ubuntu - /srv/obs/repos/local-fuel-<fuel_version>-ubuntu-deps.\n \
+				  CentOS - /srv/obs/repos/local-fuel-<fuel_version>-centos-deps.\n \
+[-a <arch>]          		- Optional. Repository architecture. Default value: x86_64."
+
 			exit
 			;;
 	esac
@@ -37,6 +50,7 @@ if [[ -z "$REPO_URL" ]]; then
 	exit 1
 fi
 [[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
+[[ -z "$FUEL_VERSION" ]] && FUEL_VERSION=5.1
 if [[ -z "$TEMP_DIR" ]]; then
 	TEMP_DIR="/data/imports"
 	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
@@ -52,7 +66,7 @@ else
 fi
 case "$REPO_TYPE" in
 	"RPM"|"rpm")
-		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-centos-deps"
+		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-$FUEL_VERSION-centos-deps"
 		repo_init () {
 			find "$TEMP_DIR" -name "*.rpm" -print0 | xargs -0 mv -t $LOCAL_MIRROR_PATH/$ARCH
 			pushd $LOCAL_MIRROR_PATH
@@ -63,11 +77,10 @@ case "$REPO_TYPE" in
 		DELIM='-'
 		;;
 	"DEB"|"deb")
-		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-ubuntu-deps"
+		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-$FUEL_VERSION-ubuntu-deps"
 		repo_init () {
 			local dist=precise
 			export REPREPRO_BASE_DIR=$LOCAL_MIRROR_PATH/reprepro
-			local VERSION=`basename $LOCAL_MIRROR_PATH | cut -d"-" -f3`
 			if [ -d $REPREPRO_BASE_DIR ]; then
 		  		mkdir -p $REPREPRO_BASE_DIR/conf
 		        	cat > $REPREPRO_BASE_DIR/conf/distributions <<EOF
@@ -75,7 +88,7 @@ Origin: Mirantis
 Label: Mirantis FUEL
 Suite: unstable
 Codename: $dist
-Version: $VERSION
+Version: $FUEL_VERSION
 Architectures: amd64 source i386
 Components: main
 Description: FUEL packages for Ubuntu 12.04 Precise Pangolin
