@@ -1,12 +1,39 @@
 #!/bin/bash
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
-REPO_URL=$1
-REPO_TYPE=$2
-LOCAL_MIRROR_PATH=$3
-ARCH=$4
-TEMP_DIR=$5
+while getopts ":u:t:p:a:d:h" FLAG; do
+	case $FLAG in
+		u)
+			REPO_URL=$OPTARG
+			;;
+		t)
+			REPO_TYPE=$OPTARG
+			;;
+		p)
+			LOCAL_MIRROR_PATH=$OPTARG
+			;;
+		a)
+			ARCH=$OPTARG
+			;;
+		d)
+			TEMP_DIR=$OPTARG
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo "Usage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM]  [-p <local_mirror_path>] [-a <arch>=x86_64] [-d <temp_download_dir>=/data/imports]"
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
 if [[ -z "$REPO_URL" ]]; then
-	echo -e "Invalid usage\nUsage: $(basename $0) <source_repo_url> [<repo_type=RPM]  [<local_mirror_path>] [<arch>=x86_64] [<temp_download_dir>=/data/imports]\n"
+	echo "Invalid usage. You should specify URL for downloading from. Use -h for help" >&2
 	exit 1
 fi
 [[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
