@@ -9,7 +9,7 @@ if [[ -z "$REPO_URL" ]]; then
 	exit 1
 fi
 [[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-osci-centos-mirror"
-if [[ -z "$ARCH" ]]; then
+if [[ -z "$TEMP_DIR" ]]; then
 	TEMP_DIR="/data/imports"
 	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
 fi
