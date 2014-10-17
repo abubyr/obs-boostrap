@@ -78,10 +78,10 @@ fi
 #WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
 wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror -nd $REPO_URL
 # Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
-mkdir dont_rem_dir
+mkdir -p /data/dont_rem_dir
 for pkg in "$DONT_REMOVE"
 do
-	mv $TMP_DIR/$pkg$DELIM[0-9]*.{rpm,udeb,deb} dont_rem_dir/
+	mv $TMP_DIR/$pkg$DELIM[0-9]*.{rpm,udeb,deb} /data/dont_rem_dir/
 done
 # Remove openstack and fuel packages which will be built on OBS server
 for i in "$REMOVE_LIST"
@@ -90,4 +90,4 @@ do
 done
 chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
 rm -rf $TEMP_DIR
-rm -rf dont_rem_dir
+rm -rf /data/dont_rem_dir
