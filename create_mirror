@@ -1,0 +1,93 @@
+#!/bin/bash
+# If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
+REPO_URL=$1
+REPO_TYPE=$2
+LOCAL_MIRROR_PATH=$3
+ARCH=$4
+TEMP_DIR=$5
+if [[ -z "$REPO_URL" ]]; then
+	echo -e "Invalid usage\nUsage: $(basename $0) <source_repo_url> [<repo_type=RPM]  [<local_mirror_path>] [<arch>=x86_64] [<temp_download_dir>=/data/imports]\n"
+	exit 1
+fi
+[[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
+if [[ -z "$TEMP_DIR" ]]; then
+	TEMP_DIR="/data/imports"
+	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
+fi
+if [[ -z "$ARCH" ]]; then
+	ARCH="x86_64"
+	echo -e "You didn't specify repo arch. $ARCH arch is assumed\n"
+fi
+if [[ ! -d "$TEMP_DIR" ]]; then
+	if ! mkdir -p "$TEMP_DIR"; then echo "Temporary directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $TEMP_DIR/*
+fi
+case "$REPO_TYPE" in
+	"RPM"|"rpm")
+		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-centos-deps"
+		repo_init {
+			mv "$TMP_DIR"/*.rpm $LOCAL_MIRROR_PATH/$ARCH
+			pushd $LOCAL_MIRROR_PATH
+			createrepo .
+			popd
+		}
+		REPO_DIR=$ARCH
+		DELIM='_'
+		;;
+	"DEB"|"deb")
+		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-ubuntu-deps"
+		repo_init {
+			local dist=precise
+			export REPREPRO_BASE_DIR=$LOCAL_MIRROR_PATH/reprepro
+			local VERSION=`basename $LOCAL_MIRROR_PATH | cut -d"-" -f3`
+			if [ -d $REPREPRO_BASE_DIR ]; then
+		  		mkdir -p $REPREPRO_BASE_DIR/conf
+		        	cat > $REPREPRO_BASE_DIR/conf/distributions <<EOF
+Origin: Mirantis
+Label: Mirantis FUEL
+Suite: unstable
+Codename: $dist
+Version: $VERSION
+Architectures: amd64 source i386
+Components: main
+Description: FUEL packages for Ubuntu 12.04 Precise Pangolin
+UDebComponents: main
+Contents: . .gz .bz2
+EOF
+	   		fi
+			for i in $(find $TMP_DIR -name \*deb) ; do reprepro includedeb $dist $i; done
+	    		for i in $(find $TMP_DIR -name \*udeb) ; do reprepro includeudeb $dist $i; done
+		}
+		REPO_DIR='reprepro'
+		DELIM='-'
+		;;
+	*)
+		echo "Invalid package_type. Should be either RPM or DEB"
+		exit 1
+		;;
+esac
+
+if [[ ! -d "$LOCAL_MIRROR_PATH" ]]; then
+	if ! mkdir -p "$LOCAL_MIRROR_PATH"/"$REPO_DIR"; then echo "Local mirror directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $LOCAL_MIRROR_PATH/*
+	mkdir -p "$LOCAL_MIRROR_PATH"/"$REPO_DIR"
+fi
+
+#WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
+wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror -nd $REPO_URL
+# Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
+mkdir dont_rem_dir
+for pkg in "$DONT_REMOVE"
+do
+	mv $TMP_DIR/$pkg$DELIM[0-9]*.{rpm,udeb,deb} dont_rem_dir/
+done
+# Remove openstack and fuel packages which will be built on OBS server
+for i in "$REMOVE_LIST"
+do
+	rm -rf "$TMP_DIR"/"*$i*"
+done
+chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
+rm -rf $TEMP_DIR
+rm -rf dont_rem_dir
