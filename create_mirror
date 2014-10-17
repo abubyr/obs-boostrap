@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
 while getopts ":u:t:p:a:d:h" FLAG; do
 	case $FLAG in
@@ -54,7 +54,7 @@ case "$REPO_TYPE" in
 	"RPM"|"rpm")
 		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-5.1-centos-deps"
 		repo_init () {
-			mv "$TMP_DIR"/*.rpm $LOCAL_MIRROR_PATH/$ARCH
+			find "$TEMP_DIR" -name "*.rpm" -print0 | xargs -0 mv -t $LOCAL_MIRROR_PATH/$ARCH
 			pushd $LOCAL_MIRROR_PATH
 			createrepo .
 			popd
@@ -83,8 +83,8 @@ UDebComponents: main
 Contents: . .gz .bz2
 EOF
 	   		fi
-			for i in $(find $TMP_DIR -name \*deb) ; do reprepro includedeb $dist $i; done
-	    		for i in $(find $TMP_DIR -name \*udeb) ; do reprepro includeudeb $dist $i; done
+			for i in $(find $TEMP_DIR -name \*deb) ; do reprepro includedeb $dist $i; done
+	    		for i in $(find $TEMP_DIR -name \*udeb) ; do reprepro includeudeb $dist $i; done
 		}
 		REPO_DIR='reprepro'
 		DELIM='_'
@@ -105,18 +105,24 @@ fi
 #WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
 wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -nd $REPO_URL
 # Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
-mkdir -p /data/dont_rem_dir
-for pkg in $DONT_REMOVE
-do
-	mv $TMP_DIR/$pkg$DELIM[0-9]* /data/dont_rem_dir/
-done
-# Remove openstack and fuel packages which will be built on OBS server
-for i in $REMOVE_LIST
-do
-	rm -rf "$TMP_DIR"/*$i*
-done
-mv /data/dont_rem_dir/* $TMP_DIR
-rm -rf /data/dont_rem_dir
+if [[ -n "$REMOVE_LIST" ]]; then
+	if [[ -n "$DONT_REMOVE" ]]; then
+		mkdir -p /data/dont_rem_dir
+		for pkg in $DONT_REMOVE
+		do
+			mv $TEMP_DIR/$pkg$DELIM[0-9]* /data/dont_rem_dir/
+		done
+	fi
+	# Remove openstack and fuel packages which will be built on OBS server
+	for i in $REMOVE_LIST
+	do
+		rm -rf "$TEMP_DIR"/*$i*
+	done
+	if [[ -d /data/dont_rem_dir ]]; then
+		ls -A /data/dont_rem_dir >/dev/null 2>&1 && mv /data/dont_rem_dir/* $TEMP_DIR
+		rm -rf /data/dont_rem_dir
+	fi
+fi
 repo_init
 chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
 rm -rf $TEMP_DIR
