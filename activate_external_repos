@@ -1,5 +1,13 @@
-#!/bin/bash
-while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
+#!/bin/bash -x
+UBUNTU_NONSTANDARD_REPO="false"
+OBS_SRV_URL=$OBS_DEST
+OBS_USER="Admin"
+OBS_PASS="opensuse"
+REPO_TYPE="RPM"
+ARCH="x86_64"
+UBUNTU_DISTRO="precise"
+UBUNTU_REPO_COMPONENT="main"
+while getopts ":u:p:t:n:a:d:c:hA:X" FLAG; do
 	case $FLAG in
 		u)
 			REPO_URL=$OPTARG
@@ -31,6 +39,9 @@ while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
 		P)
 			OBS_PASS=$OPTARG
 			;;
+		X)
+			UBUNTU_NONSTANDARD_REPO="true"
+			;;
 		\?)
 			echo "Invalid option: -$OPTARG. Use -h for help" >&2
 			exit 1
@@ -50,6 +61,8 @@ while getopts ":u:p:t:n:a:d:c:hA:" FLAG; do
 [-P <obs_password>]		- Optional. OBS API admin user password. Default value: opensuse\n \
 [-t <repo_type>]     		- Optional. deb or rpm repository type. Default value: RPM.\n \
 [-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
+-X				- Optional. UBUNTU ONLY. If set, nonstandard Ubuntu repo (without dists/pool directories) is assumed.\n \
+				  In this case <source_repo_url> should point to directory with Packages.gz file.\n \
 [-d <ubuntu_distro>=precise]	- Optional. UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
 [-c <ubuntu_repo_component>=main]-Optional. UBUNTU ONLY: Ubuntu repo component, e.g. main, universe, multiverse etc. Default value: main."
 				
@@ -63,23 +76,26 @@ if [[ -z "$REPO_URL" || -z "$PROJECT" || -z "$REPO_NAME" ]]; then
 	echo "Invalid usage. <repo_url>, <obs-project> and <repository_name> arguments are mandatory. Use -h fo help."
 	exit 1
 fi
-[[ -z "$OBS_SRV_URL" ]] && OBS_SRV_URL=$OBS_DEST
-[[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
-[[ -z "$ARCH" ]] && ARCH="x86_64"
-[[ -z "$UBUNTU_DISTRO" ]] && UBUNTU_DISTRO="precise"
-[[ -z "$UBUNTU_REPO_COMPONENT" ]] && UBUNTU_REPO_COMPONENT="main"
+if [[ -z "$OBS_SRV_URL" ]]; then
+	echo "Invalid usage. Specify OBS API URL! Use -h fo help."
+	exit 1
+fi
+
 case "$REPO_TYPE" in
 	"RPM"|"rpm")
 		INDEX_TYPE="primary.xml.gz"
 		# determine exact path to primary.xml.gz file in repodata
-		INDEX_URL="${REPO_URL%/}/repodata/$(curl ${INDEX_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
+		INDEX_URL="${REPO_URL%/}/repodata/$(curl ${REPO_URL%/}/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
 		UNZIPPER="gunzip"
 		;;
 	"DEB"|"deb")
 		INDEX_TYPE="Packages.gz"
 		DIST="precise"
-
-		INDEX_URL="${REPO_URL%/}/dist/$UBUNTU_DISTRO/$UBUNTU_REPO_COMPONENT/binary-$(echo $ARCH | sed 's|^x86_64$|amd64|;s|^x86$|i386|')/$INDEX_TYPE"
+		if [[ "$UBUNTU_NONSTANDARD_REPO" == "false" ]]; then
+			INDEX_URL="${REPO_URL%/}/dists/$UBUNTU_DISTRO/$UBUNTU_REPO_COMPONENT/binary-$(echo $ARCH | sed 's|^x86_64$|amd64|;s|^x86$|i386|')/$INDEX_TYPE"
+		else
+			INDEX_URL=$REPO_URL/$INDEX_TYPE
+		fi
 		UNZIPPER="gunzip"
 		;;
 	*)
@@ -88,11 +104,13 @@ case "$REPO_TYPE" in
 		;;
 esac
 # add credentials to OBS server API if absent
-if ! grep $OBS_SRV_URL $HOME/.oscrc; then cat > $HOME/.oscrc <<OSCRCEOF
+if ! grep -q $OBS_SRV_URL $HOME/.oscrc; then cat > $HOME/.oscrc <<OSCRCEOF
+[general]
 [$OBS_SRV_URL]
 user = $OBS_USER
 pass = $OBS_PASS
 OSCRCEOF
+fi
 OBS_IP=${OBS_SRV_URL#*//}
 OBS_IP=${OBS_IP%/*}
 OBS_PORT=${OBS_IP##*:}
@@ -103,7 +121,7 @@ if [ ! -f $HOME/.config/osc/trusted-certs/$OBS_IP_$OBS_PORT.* ]; then
 	echo 2 | osc -A $OBS_SRV_URL ls > /dev/null 2>&1
 fi
 # create target/external project on destination OBS
-if ! osc -A $OBS_DEST meta prj -F - $PROJECT <<EOF
+if ! osc -A $OBS_SRV_URL meta prj -F - $PROJECT <<EOF
 <project name="$PROJECT">
   <title/>
   <description/>

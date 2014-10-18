@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
 while getopts ":u:t:p:a:da:v:h" FLAG; do
 	case $FLAG in
@@ -38,8 +38,10 @@ while getopts ":u:t:p:a:da:v:h" FLAG; do
 				  Default values:\n \
 				  Ubuntu - /srv/obs/repos/local-fuel-<fuel_version>-ubuntu-deps.\n \
 				  CentOS - /srv/obs/repos/local-fuel-<fuel_version>-centos-deps.\n \
-[-a <arch>]          		- Optional. Repository architecture. Default value: x86_64."
-
+[-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
+You can specify list of packages to remove from mirror, providing it in env variable REMOVE_LIST.\n \
+For removing unnecessary packages glob *<name>* is used. If you don't want to delete some packages, whose names match to this glob, \
+please, specify them in DONT_REMOVE environment variable."
 			exit
 			;;
 	esac
@@ -120,10 +122,10 @@ wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -n
 # Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
 if [[ -n "$REMOVE_LIST" ]]; then
 	if [[ -n "$DONT_REMOVE" ]]; then
-		mkdir -p /data/dont_rem_dir
+		mkdir -p $TEMP_DIR/dont_rem_dir
 		for pkg in $DONT_REMOVE
 		do
-			mv $TEMP_DIR/$pkg$DELIM[0-9]* /data/dont_rem_dir/
+			mv $TEMP_DIR/$pkg$DELIM[0-9]* $TEMP_DIR/dont_rem_dir/
 		done
 	fi
 	# Remove openstack and fuel packages which will be built on OBS server
@@ -131,9 +133,9 @@ if [[ -n "$REMOVE_LIST" ]]; then
 	do
 		rm -rf "$TEMP_DIR"/*$i*
 	done
-	if [[ -d /data/dont_rem_dir ]]; then
-		ls -A /data/dont_rem_dir >/dev/null 2>&1 && mv /data/dont_rem_dir/* $TEMP_DIR
-		rm -rf /data/dont_rem_dir
+	if [[ -d $TEMP_DIR/dont_rem_dir ]]; then
+		ls -A $TEMP_DIR/dont_rem_dir >/dev/null 2>&1 && mv $TEMP_DIR/dont_rem_dir/* $TEMP_DIR
+		rm -rf $TEMP_DIR/dont_rem_dir
 	fi
 fi
 repo_init
