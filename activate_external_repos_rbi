@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 UBUNTU_NONSTANDARD_REPO="false"
 OBS_SRV_URL=$OBS_DEST
 OBS_USER="Admin"
@@ -148,7 +148,6 @@ if ! osc -A $OBS_SRV_URL meta prj -F - $PROJECT <<EOF
   <description/>
   <person userid="Admin" role="bugowner"/>
   <person userid="Admin" role="maintainer"/>
-  <download baseurl="$REPO_URL" metafile="${INDEX_TYPE%.*}" mtype="$REPO_TYPEmd" arch="$ARCH"/>
   <repository name="$REPO_NAME">
     <arch>$ARCH</arch>
   </repository>
@@ -159,19 +158,28 @@ then
 	echo "Project wasn't created. Exitting..."
 	exit 1
 fi
+rcobsscheduler shutdown
+if [[ ! -d /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full ]]; then
+	if ! mkdir -p /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full; then echo ":full directory for project $PROJECT wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/*
+fi
+[[ -e /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full.solv ]] && rm -f /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full.solv
 
 wget -O "/srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/$INDEX_TYPE" $INDEX_URL
 $UNZIPPER "/srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/$INDEX_TYPE"
 download_pkgs
 #Rename RPMs as <name>.rpm (without any versions and releases) and move to :full directory of target project
-for i in $(find "$TEMP_DIR" -name \*.$REPO_TYPE);
+for i in $(find "$TEMP_DIR" -name \*."$REPO_TYPE");
 do
 	 j=$(basename $i)
-	 k=$(echo $j |sed -r r "s/(.*)"$DELIM".*"$DELIM".*."$REPO_TYPE"/\1."$REPO_TYPE"/")
-	 mv $i /srv/obs/build/$DEST_PROJECT/$REPO_NAME/$ARCH/:full/$k 
+	 k=$(echo $j |sed -r "s/(.*)"$DELIM".*"$DELIM".*\."$REPO_TYPE"/\1\."$REPO_TYPE"/")
+	 mv $i /srv/obs/build/$PROJECT/$REPO_NAME/$ARCH/:full/$k 
 done
 
 if grep obsrun /etc/passwd; then
-	chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
+	chown -R obsrun:obsrun "/srv/obs/build/$PROJECT"
 fi
 rm -rf $TEMP_DIR
+rcobsscheduler start
+obs_admin --rescan-repository $PROJECT $REPO_NAME $ARCH
