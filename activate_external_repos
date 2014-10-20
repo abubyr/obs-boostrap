@@ -51,7 +51,7 @@ while getopts ":u:p:t:n:a:d:c:hA:X" FLAG; do
 			exit 1
 			;;
 		h)
-			echo -e "Usage: $(basename $0) [-A <obs_url>] -u <source_repo_url> -p <obs_project> -n <repository_name> [-t <repo_type>=RPM] [-a <arch>=x86_64] \
+			echo -e "This script connects package repositories (RPM and DEB repos are supported) to OBS projects (so-called target, external, internal projects, which doesn't contain any OBS packages and used as dependency projects for other ones.\n\nUsage: $(basename $0) [-A <obs_url>] -u <source_repo_url> -p <obs_project> -n <repository_name> [-t <repo_type>=RPM] [-a <arch>=x86_64] \
 [-d <ubuntu_distro>=precise] [-c <ubuntu_repo_component>=main]\n\n \
 -u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
 -p <obs_project>     		- Mandatory. Name of OBS project for linking (activating).\n \

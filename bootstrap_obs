@@ -5,27 +5,56 @@
 # PROJECT_LIST - list of projects to copy. Should contain all possible dependenices
 #PROJECT_LIST=$(osc -A $OBS_SOURCE ls)
 # OBS (osc) user which performs copying
-if [[ -z "$OBS_SOURCE" ]]; then
-	echo -e "Invalid usage.\nSet up environment variable OBS_SOURCE, which should contain OBS server API URL to copy from (source)!"
+OBS_DST=$OBS_DEST
+OBS_SRC=$OBS_SOURCE
+PRJ_LIST=$PROJECT_LIST
+
+while getopts ":s:d:p:h" FLAG; do
+	case $FLAG in
+		s)
+			OBS_SRC=$OPTARG
+			;;
+		d)
+			OBS_DST=$OPTARG
+			;;
+		p)
+			PRJ_LIST="$OPTARG"
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo -e "This script is intended to copy list of projects specified by user from one OBS server to another. The whole package set is copied for every specified project.\n\n\
+Usage: $(basename $0) [-s <source_obs_url>] [-d <dest_obs_url>] [-p <obs_project>] [-l <package_list>] \n\n \
+[-s <source_obs_url]		- Optional. Source OBS server API URL. Default value: env variable OBS_SOURCE\n \
+[-d <dest_obs_url]		- Optional. Destination OBS server API URL. Default value: env variable OBS_DEST\n \
+[-p <obs_project_list>]     	- Optional. List of OBS projects to copy. Default value: env variable PROJECT_LIST.\n \
+If you need to copy ALL projects, specify PROJECT_LIST=\$(osc -A \$OBS_SOURCE ls)"
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
+
+if [[ -z "$OBS_SRC" || -z "$OBS_DST" || -z "$PRJ" ]]; then
+	echo -e "Invalid usage. Set up environment variables or pass arguments to script via CLI. See help (-h) for more information."
 	exit 1
 fi
-if [[ -z "$OBS_DEST" ]]; then
-	echo -e "Invalid usage.\nSet up environment variable OBS_DEST, which should contain OBS server API URL to copy to (destination)!"
-	exit 1
-fi
-if [[ -z "$PROJECT_LIST" ]]; then
-	echo -e "Invalid usage.\nSet up environment variable PROJECT_LIST - list of projects to copy (should contain all possible dependenices)!"
-	exit 1
-fi
+i
 echo -e "######################################\n
-Link to source OBS (OBS_SOURCE) = $OBS_SOURCE. Link to destination OBS (OBS_DEST) = $OBS_DEST. List of projects to copy (PROJECT_LIST) = $PROJECT_LIST \n
+Link to source OBS (OBS_SRC) = $OBS_SRC. Link to destination OBS (OBS_DST) = $OBS_DST. List of projects to copy (PRJ_LIST) = $PRJ_LIST \n
 #####################################\n"
-for PRJ in $PROJECT_LIST; do
+for PRJ in $PRJ_LIST; do
 # copy prj and prjconf of source project
-	osc -A $OBS_SOURCE meta prj $PRJ > $PRJ.prj
-	osc -A $OBS_SOURCE meta prjconf $PRJ > $PRJ.prjconf
+	osc -A $OBS_SRC meta prj $PRJ > $PRJ.prj
+	osc -A $OBS_SRC meta prjconf $PRJ > $PRJ.prjconf
 # create project with corrected metadata on destination OBS
-	osc -A $OBS_DEST meta prj -F - $PRJ << OBSEOF
+	osc -A $OBS_DST meta prj -F - $PRJ << OBSEOF
 $(sed '/path project/d' $PRJ.prj)
 OBSEOF
 	if [[ "$?" != "0" ]]; then
@@ -34,20 +63,20 @@ OBSEOF
 		exit 1
 	fi
 # set up prjconf on destination projects
-	osc -A $OBS_DEST meta prjconf -F $PRJ.prjconf $PRJ
+	osc -A $OBS_DST meta prjconf -F $PRJ.prjconf $PRJ
 done
-for PRJ in $PROJECT_LIST; do
+for PRJ in $PRJ_LIST; do
 # set up vanilla from source metadata on destination projects
-	osc -A $OBS_DEST meta prj -F $PRJ.prj $PRJ
+	osc -A $OBS_DST meta prj -F $PRJ.prj $PRJ
 # remove temporary files with project configs
 	rm -f $PRJ.{prj,prjconf}
 # copy packages from one project to another using osc copypac command
-	for pkg in $(osc -A $OBS_SOURCE ls $PRJ); do
-		osc -A $OBS_SOURCE copypac -t $OBS_DEST $PRJ $pkg $PRJ
+	for pkg in $(osc -A $OBS_SRC ls $PRJ); do
+		osc -A $OBS_SRC copypac -t $OBS_DST $PRJ $pkg $PRJ
 		# copy package metadata
-		osc -A $OBS_SOURCE meta pkg $PRJ $pkg > $pkg.pkg
+		osc -A $OBS_SRC meta pkg $PRJ $pkg > $pkg.pkg
 		# set up pkg meta
-		osc -A $OBS_DEST meta pkg -F $pkg.pkg $PRJ $pkg
+		osc -A $OBS_DST meta pkg -F $pkg.pkg $PRJ $pkg
 		# clean temporary file
 		rm -f $pkg.pkg
 	done

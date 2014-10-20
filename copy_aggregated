@@ -2,6 +2,35 @@
 OBS_DST=$OBS_DEST
 OBS_SRC=$OBS_SOURCE
 PROJ_LIST=$PROJECT_LIST
+while getopts ":s:d:p:h" FLAG; do
+	case $FLAG in
+		s)
+			OBS_SRC=$OPTARG
+			;;
+		d)
+			OBS_DST=$OPTARG
+			;;
+		p)
+			PROJ_LIST="$OPTARG"
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo -e "This script 'de-aggregates' given projects, e.g. recursively finds 'parent' project/package pair for all aggregated OBS packages in specified projects and replaces _aggregated files on specs and source tarballs from this parent project.\n\nUsage: $(basename $0) [-s <source_obs_url>] [-d <dest_obs_url>] [-p <obs_project_list>]\n\n \
+[-s <source_obs_url]		- Optional. Source OBS server API URL. Default value: env variable OBS_SOURCE\n \
+[-d <dest_obs_url]		- Optional. Destination OBS server API URL. Default value: env variable OBS_DEST\n \
+[-p <obs_project_list>]     	- Optional. List of projects to de-aggregate. Default value: env variable PROJECT_LIST." 
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
 find_source_project()
 {
 	local proj=$1
@@ -31,6 +60,10 @@ find_source_project()
 	fi
 	return 0
 }
+if [[ -z "$OBS_DST" || -z "$OBS_SRC" || -z "$PROJ_LIST" ]]; then
+	echo "Invalid usage. Specify URL to OBS servers and projects you want to de-aggregate. Use -h fo help."
+	exit 1
+fi
 for PROJECT in $PROJ_LIST; do
 for pkg in $(osc -A $OBS_DST ls $PROJECT); do
 	if [[ "$(osc -A $OBS_DST ls $PROJECT $pkg)" == "_aggregate" ]]; then

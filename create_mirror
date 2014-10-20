@@ -29,7 +29,7 @@ while getopts ":u:t:p:a:da:v:h" FLAG; do
 			exit 1
 			;;
 		h)
-			echo -e "Usage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM] [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64] \
+			echo -e "This script is able to create local mirrors of Debian/RPM repositories.\n\nUsage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM] [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64] \
 [-d <temp_download_dir>=/data/imports]\n\n \
 -u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
 [-v <fuel_version>]     	- Optional. Version of FUEL. Default value: 5.1\n \
@@ -139,5 +139,7 @@ if [[ -n "$REMOVE_LIST" ]]; then
 	fi
 fi
 repo_init
-chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
+if grep obsrun /etc/passwd; then
+	chown -R obsrun:obsrun $LOCAL_MIRROR_PATH
+fi
 rm -rf $TEMP_DIR
