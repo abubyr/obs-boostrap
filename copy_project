@@ -55,16 +55,32 @@ echo -e "######################################\n
 Link to source OBS (OBS_SRC) = $OBS_SRC. Link to destination OBS (OBS_DST) = $OBS_DST. Project to copy (PRJ) = $PRJ\n
 ######################################\n"
 
-# copy prj and prjconf of source project
-echo "Copying project $PRJ ..."
-osc -A $OBS_SRC meta prj $PRJ > $PRJ.prj
-osc -A $OBS_SRC meta prjconf $PRJ > $PRJ.prjconf
-# create project on destination OBS
-if ! osc -A $OBS_DST meta prj -F $PRJ.prj $PRJ; then 
+# Uncomment this and comment out underlying if statement if you need to copy also project's meta from source OBS instead of creating it manually
+# WARNING: project won't be created in this case if there is no some project on destination OBS server which mentioned in meta as dependency
+#echo "Copying project $PRJ ..."
+#osc -A $OBS_SRC meta prj $PRJ > $PRJ.prj
+#if ! osc -A $OBS_DST meta prj -F $PRJ.prj $PRJ; then 
+#	echo "Project wasn't created. Exitting..."
+#	rm -f $PRJ.prj
+#	exit 1
+#fi
+
+# create project on destination OBS 
+echo "Creating project $PRJ with empty meta..."
+if ! osc -A $OBS_DST meta prj -F - $PRJ <<EOF
+<project name="$PRJ">
+  <title/>
+  <description/>
+  <person userid="Admin" role="bugowner"/>
+  <person userid="Admin" role="maintainer"/>
+</project>
+EOF
+then
 	echo "Project wasn't created. Exitting..."
-	rm -f $PRJ.{prj,prjconf}
+	rm -f $PRJ.prjconf
 	exit 1
 fi
+osc -A $OBS_SRC meta prjconf $PRJ > $PRJ.prjconf
 osc -A $OBS_DST meta prjconf -F $PRJ.prjconf $PRJ
 # remove temporary files with project configs
 rm -f $PRJ.{prj,prjconf}
