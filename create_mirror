@@ -1,6 +1,13 @@
-#!/bin/bash
+#!/bin/bash -x
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
-while getopts ":u:t:p:a:da:v:h" FLAG; do
+download_pkgs(){
+	wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -nd $REPO_URL
+}
+DOWNLOAD_ALL="false"
+UBUNTU_DISTRO="precise"
+UBUNTU_REPO_COMPONENT="main"
+UBUNTU_NONSTANDARD_REPO="false"
+while getopts ":u:t:p:a:c:d:v:O:hAX" FLAG; do
 	case $FLAG in
 		u)
 			REPO_URL=$OPTARG
@@ -14,11 +21,23 @@ while getopts ":u:t:p:a:da:v:h" FLAG; do
 		a)
 			ARCH=$OPTARG
 			;;
-		d)
+		O)
 			TEMP_DIR=$OPTARG
 			;;
 		v)
 			FUEL_VER=$OPTARG
+			;;
+		A)
+			DOWNLOAD_ALL="true"
+			;;
+		X)
+			UBUNTU_NONSTANDARD_REPO="true"
+			;;
+		d)
+			UBUNTU_DISTRO=$OPTARG
+			;;
+		c)
+			UBUNTU_REPO_COMPONENT=$OPTARG
 			;;
 		\?)
 			echo "Invalid option: -$OPTARG. Use -h for help" >&2
@@ -29,16 +48,24 @@ while getopts ":u:t:p:a:da:v:h" FLAG; do
 			exit 1
 			;;
 		h)
-			echo -e "This script is able to create local mirrors of Debian/RPM repositories.\n\nUsage: $(basename $0) -u <source_repo_url> [-t <repo_type=RPM] [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64] \
-[-d <temp_download_dir>=/data/imports]\n\n \
+			echo -e "This script is able to create local mirrors of Debian/RPM repositories.\n\nUsage: $(basename $0) -u <source_repo_url> [-A] [-t <repo_type=RPM] [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64] [-X] [-d <ubuntu_distro>=precise] [-c <ubuntu_repo_component>=main]\
+[-O <temp_download_dir>=/data/imports]\n\n \
 -u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
+[-A]				- Optional. If set, all packages will be downloaded.\n \
+				  If unset - src rpms and debuginfo rpms/debug debs WON'T be downloaded.\n \
+[-X]				- Optional. UBUNTU ONLY. If set, nonstandard Ubuntu repo (without dists/pool directories) is assumed.\n \
+				  In this case <source_repo_url> should point to directory with Packages.gz file.\n \
 [-v <fuel_version>]     	- Optional. Version of FUEL. Default value: 5.1\n \
 [-t <repo_type>]     		- Optional. Choose deb or rpm repo type. Default value: RPM.\n \
--p [<local_mirror_path>]	- Optional. Where to put repository mirror on OBS server.\n \
+[-p <local_mirror_path>]	- Optional. Where to put repository mirror on OBS server.\n \
 				  Default values:\n \
 				  Ubuntu - /srv/obs/repos/local-fuel-<fuel_version>-ubuntu-deps.\n \
 				  CentOS - /srv/obs/repos/local-fuel-<fuel_version>-centos-deps.\n \
 [-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
+[-O <temp_download_dir>]	- Optional. Temporary directory for downloading packages. Default value: /data/imports.\n \
+				  WARNING: don't run few instances of script with the same temp dir!\n \
+[-d <ubuntu_distro>=precise]	- Optional. UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
+[-c <ubuntu_repo_component>=main]-Optional. UBUNTU ONLY: Ubuntu repo component, e.g. main, universe, multiverse etc. Default value: main.\n \
 You can specify list of packages to remove from mirror, providing it in env variable REMOVE_LIST.\n \
 For removing unnecessary packages glob *<name>* is used. If you don't want to delete some packages, whose names match to this glob, \
 please, specify them in DONT_REMOVE environment variable."
@@ -57,6 +84,8 @@ if [[ -z "$TEMP_DIR" ]]; then
 	TEMP_DIR="/data/imports"
 	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
 fi
+TEMP_DIR=${TEMP_DIR%/}
+REPO_URL=${REPO_URL%/}
 if [[ -z "$ARCH" ]]; then
 	ARCH="x86_64"
 	echo -e "You didn't specify repo arch. $ARCH arch is assumed\n"
@@ -69,6 +98,20 @@ fi
 case "$REPO_TYPE" in
 	"RPM"|"rpm")
 		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-$FUEL_VERSION-centos-deps"
+		if [[ "$DOWNLOAD_ALL" == "false" ]]; then
+			download_pkgs() {
+				local INDEX_TYPE="primary.xml.gz"
+				# determine exact path to primary.xml.gz file in repodata
+				local INDEX_URL="$REPO_URL/repodata/$(curl $REPO_URL/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
+				if ! wget -O "$TEMP_DIR"/primary.xml.gz $INDEX_URL; then rm -rf $TEMP_DIR $LOCAL_MIRROR_PATH; echo "Cannot retreive primary.xml.gz. Exitting..."; exit 1; fi
+				gunzip "$TEMP_DIR"/primary.xml.gz
+				# retreive exact list of links to rpm packages except src.rpm and debuginfo ones
+				local RPM_URL_LIST=$(grep ".*<location.*\.rpm" $TEMP_DIR/primary.xml | egrep -v "src.rpm|debuginfo" |  sed -r 's|^.*["']\(.*rpm\)['"].*$|\1|')
+				for pkg_url in $RPM_URL_LIST; do
+					wget --directory-prefix="$TEMP_DIR" -N $REPO_URL/$pkg_url
+				done
+			}
+		fi
 		repo_init () {
 			find "$TEMP_DIR" -name "*.rpm" -print0 | xargs -0 mv -t $LOCAL_MIRROR_PATH/$ARCH
 			pushd $LOCAL_MIRROR_PATH
@@ -80,6 +123,22 @@ case "$REPO_TYPE" in
 		;;
 	"DEB"|"deb")
 		[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-$FUEL_VERSION-ubuntu-deps"
+		if [[ "$DOWNLOAD_ALL" == "false" ]]; then
+			download_pkgs(){
+			if [[ "$UBUNTU_NONSTANDARD_REPO" == "false" ]]; then
+				local INDEX_URL="$REPO_URL/dists/$UBUNTU_DISTRO/$UBUNTU_REPO_COMPONENT/binary-$(echo $ARCH | sed 's|^x86_64$|amd64|;s|^x86$|i386|')/Packages.gz"
+			else
+				local INDEX_URL=$REPO_URL/Packages.gz
+			fi
+			if ! wget -O "$TEMP_DIR"/Packages.gz $INDEX_URL; then rm -rf $TEMP_DIR $LOCAL_MIRROR_PATH; echo "Cannot retreive Packages.gz. Exitting..."; exit 1; fi
+			gunzip "$TEMP_DIR"/Packages.gz
+			# download all debs except dbg packages
+			local DEB_URL_LIST=$(grep Filename: $TEMP_DIR/Packages | grep -v "^.*dbg.*deb" | awk -F 'Filename: *' '{print $2}')
+			for pkg_url in $DEB_URL_LIST; do
+				wget --directory-prefix="$TEMP_DIR" -N $REPO_URL/$pkg_url
+			done
+			}
+		fi
 		repo_init () {
 			local dist=precise
 			export REPREPRO_BASE_DIR=$LOCAL_MIRROR_PATH/reprepro
@@ -89,12 +148,12 @@ case "$REPO_TYPE" in
 Origin: Mirantis
 Label: Mirantis FUEL
 Suite: unstable
-Codename: $dist
+Codename: $UBUNTU_DISTRO
 Version: $FUEL_VERSION
 Architectures: amd64 source i386
-Components: main
+Components: $UBUNTU_REPO_COMPONENT
 Description: FUEL packages for Ubuntu 12.04 Precise Pangolin
-UDebComponents: main
+UDebComponents: $UBUNTU_REPO_COMPONENT
 Contents: . .gz .bz2
 EOF
 	   		fi
@@ -118,7 +177,7 @@ else
 fi
 
 #WGET_CUT_DIRS="$(echo $REPO_URL |sed  "s,[a-zA-Z0-9]*://,,;s,\/, ,g" | wc -w)"
-wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -nd $REPO_URL
+download_pkgs
 # Don't remove packages from DONT_REMOVE list. Move them to repo dir for avoiding deletion by shell glob (see below)
 if [[ -n "$REMOVE_LIST" ]]; then
 	if [[ -n "$DONT_REMOVE" ]]; then
