@@ -1,0 +1,87 @@
+#!/bin/bash
+# If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
+GERRIT_PORT=29418
+FUEL_STABLE_BRANCH="openstack-ci/fuel-5.1/2014.1.1"
+TEMP_GIT_DIR="$HOME/gerritdata"
+while getopts ":u:d:p:n:b:O:hs:" FLAG; do
+	case $FLAG in
+		u)
+			GERRIT_URL=$OPTARG
+			;;
+		d)
+			SRC_RPM_PATH=$OPTARG
+			;;
+		p)
+			GERRIT_PORT=$OPTARG
+			;;
+		O)
+			TEMP_GIT_DIR=$OPTARG
+			;;
+		b)
+			FUEL_STABLE_BRANCH=$OPTARG
+			;;
+		n)
+			GERRIT_PROJECT=$OPTARG
+			;;
+		s)
+			SRC_RPM_NAME=$OPTARG
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo -e "This script is intended for downloading src rpms with latest version.\n\nUsage: $(basename $0) -u <source_repo_url> [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64]\
+[-O <temp_download_dir>=/data/imports]\n\n \
+-u <gerrit_url> 		- Mandatory. URL of target Gerrit server where project will be created\n \
+-p <gerrit_project>		- Mandatory. Name of Gerrit project which should be created&initialized with source code.\n \
+-s <src_rpm_name>		- Mandatory. Name of SRC RPM with source code.\n \
+-d <src_rpm_path>		- Mandatory. Path to SRC RPM with source code.\n \
+[-b <fuel_stable_branch>]     	- Optional. Name of stable branch with FUEL code. Default value: openstack-ci/fuel-5.1/2014.1.1\n \
+[-p <gerrit_ssh_port>]		- Optional. Gerrit server ssh port.Default value: 29418\n \
+[-O <temp_git_dir>]		- Optional. Temporary directory for cloning and creating git repos. Default value: $(pwd)/gerritdata.\n \
+				  WARNING: don't run few instances of script with the same temp dir!"
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
+if [[ -z "$GERRIT_URL" ]]; then
+	echo "Invalid usage. You should specify URL to Gerrit server. Use -h for help" >&2
+	exit 1
+fi
+if [[ -z "$SRC_RPM_PATH" ]]; then
+	echo "Invalid usage. You should specify path to src rpms. Use -h for help" >&2
+	exit 1
+fi
+if [[ ! -d "$SRC_RPM_PATH" ]]; then
+	echo "$SRC_RPM_PATH directory dosen't exist! Use -h for help" >&2
+	exit 1
+fi
+SRC_RPM_PATH=${SRC_RPM_PATH%/}
+TEMP_GIT_DIR=${TEMP_GIT_DIR%/}
+GERRIT_URL=${REPO_URL%/}
+if [[ ! -d "$TEMP_GIT_DIR" ]]; then
+	if ! mkdir -p "$TEMP_GIT_DIR"; then echo "Temporary directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $TEMP_GIT_DIR/*
+fi
+# Create empty Gerrit project
+ssh -p $GERRIT_PORT $GERRIT_URL gerrit create-project $GERRIT_PROJECT
+git clone ssh://$GERRIT_URL:$GERRIT_PORT/$GERRIT_PROJECT $TEMP_GIT_DIR
+pushd $TEMP_GIT_DIR/${GERRIT_PROJECT%.git}
+git checkout -b master
+rpm2cpio "$SRC_RPM_PATH"/"$SRC_RPM_NAME"-[0-9]* | cpio -idmv --no-absolute-filenames
+git add .
+git commit -m 'Initializing repository with code'
+git push origin master
+git checkout -b $FUEL_STABLE_BRANCH
+git add .
+git commit -m "Creating branch $FUEL_STABLE_BRANCH"
+git push origin master
+popd
+rm -rf $TEMP_GIT_DIR
