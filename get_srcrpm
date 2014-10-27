@@ -1,0 +1,84 @@
+#!/bin/bash
+# If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
+while getopts ":u:p:a:v:O:h" FLAG; do
+	case $FLAG in
+		u)
+			REPO_URL=$OPTARG
+			;;
+		p)
+			LOCAL_MIRROR_PATH=$OPTARG
+			;;
+		a)
+			ARCH=$OPTARG
+			;;
+		O)
+			TEMP_DIR=$OPTARG
+			;;
+		v)
+			FUEL_VER=$OPTARG
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo -e "This script is intended for downloading src rpms with latest version.\n\nUsage: $(basename $0) -u <source_repo_url> [-v <fuel_version=5.1>] [-p <local_mirror_path>] [-a <arch>=x86_64]\
+[-O <temp_download_dir>=/data/imports]\n\n \
+-u <source_repo_url> 		- Mandatory. URL of repository project connected to. Needed for downloading repo index files.\n \
+[-v <fuel_version>]     	- Optional. Version of FUEL. Default value: 5.1\n \
+[-p <local_mirror_path>]	- Optional. Where to put repository mirror on OBS server.\n \
+				  Default values:\n \
+				  CentOS - /srv/obs/repos/local-fuel-<fuel_version>-centos-deps.\n \
+[-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
+[-O <temp_download_dir>]	- Optional. Temporary directory for downloading packages. Default value: /data/imports.\n \
+				  WARNING: don't run few instances of script with the same temp dir!"
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
+if [[ -z "$REPO_URL" ]]; then
+	echo "Invalid usage. You should specify URL for downloading from. Use -h for help" >&2
+	exit 1
+fi
+[[ -z "$FUEL_VERSION" ]] && FUEL_VERSION=5.1
+if [[ -z "$TEMP_DIR" ]]; then
+	TEMP_DIR="/data/imports"
+	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
+fi
+TEMP_DIR=${TEMP_DIR%/}
+REPO_URL=${REPO_URL%/}
+if [[ ! -d "$TEMP_DIR" ]]; then
+	if ! mkdir -p "$TEMP_DIR"; then echo "Temporary directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf $TEMP_DIR/*
+fi
+[[ -z "$LOCAL_MIRROR_PATH" ]] && LOCAL_MIRROR_PATH="/srv/obs/repos/local-fuel-$FUEL_VERSION-centos-deps"
+download_pkgs() {
+	local INDEX_TYPE="primary.xml.gz"
+	# determine exact path to primary.xml.gz file in repodata
+	local INDEX_URL="$REPO_URL/repodata/$(curl -s $REPO_URL/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
+	if ! wget -q -O "$TEMP_DIR"/primary.xml.gz $INDEX_URL; then rm -rf $TEMP_DIR $LOCAL_MIRROR_PATH; echo "Cannot retreive primary.xml.gz. Exitting..."; exit 1; fi
+	gunzip "$TEMP_DIR"/primary.xml.gz
+	# retreive exact list of links to rpm packages except src.rpm and debuginfo ones
+	local RPM_URL_LIST=$(grep ".*<location.*\.rpm" $TEMP_DIR/primary.xml | grep "src\.rpm" |  sed -r 's|^.*["']\(.*rpm\)['"].*$|\1|')
+	if [[ -z "$RPM_URL_LIST" ]]; then echo "There is no any SRC RPMs in repository. Exitting..."; rm -rf "$TEMP_DIR"; exit 1; fi
+	for src_pkg in $SRC_PKG_LIST; do
+		local pkg_link=$(echo "$RPM_URL_LIST" | grep "$src_pkg-[0-9]\+.*\.rpm" | sort -u | tail -n 1)
+		if [[ -z "$pkg_link" ]]; then echo "Specified repository doesn't contain $src_pkg SRC RPM!"; continue; fi
+		wget -q --directory-prefix="$TEMP_DIR" -N $REPO_URL/$pkg_link
+	done
+}
+#if [[ ! -d "$LOCAL_MIRROR_PATH" ]]; then
+#	if ! mkdir -p "$LOCAL_MIRROR_PATH"/"$REPO_DIR"; then echo "Local mirror directory wasn't created. Exitting..."; exit 2; fi
+#else
+#	rm -rf $LOCAL_MIRROR_PATH/*
+#	mkdir -p "$LOCAL_MIRROR_PATH"/"$REPO_DIR"
+#fi
+
+download_pkgs
+#rm -rf $TEMP_DIR
