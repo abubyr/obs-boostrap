@@ -1,0 +1,251 @@
+#!/bin/bash
+GERRIT_PORT=29418
+FUEL_STABLE_BRANCH="openstack-ci/fuel-5.1/2014.1.1"
+TEMP_GIT_DIR="/tmp/gerritdata-$RANDOM"
+SRC_RPM_PATH="/tmp/srcrpm-$RANDOM"
+TEMP_UNZIP_DIR="/tmp/srcrpmunzip-$RANDOM"
+CODE_ARCHIVE_TYPE="tar.gz"
+REPO_URL=http://fuel-repository.mirantis.com/fwm/5.1.1/centos/os/x86_64
+SOURCE_GERRIT=https://review.fuel-infra.org/
+download_pkgs() {
+# Argument: list of pairs <gerrit project> <src rpm>  delimited by whitespaces
+# Example 1: download_pkgs openstack/nova openstack-nova openstack/neutron openstack-neutron openstack/python-novaclient python-novaclient ...
+# Example 2: 
+# export OPENSTACK_PROJECTS="openstack/nova openstack-nova openstack/neutron openstack-neutron openstack/python-novaclient python-novaclient ..."
+# download_pkgs $OPENSTACK_PROJECTS
+# Global variables: SRC_RPM_PATH - where to save src rpms; REPO_URL - link to repository with src rpms
+	local INDEX_TYPE="primary.xml.gz"
+	# determine exact path to primary.xml.gz file in repodata
+	local INDEX_URL="$REPO_URL/repodata/$(curl -s $REPO_URL/repodata/ | grep -o '[0-9a-hA-H-]*primary\.xml\.gz' | uniq)"
+	if ! wget -q -O "$SRC_RPM_PATH"/primary.xml.gz $INDEX_URL; then rm -rf $SRC_RPM_PATH/*; echo "Cannot retreive primary.xml.gz. Exitting..."; exit 1; fi
+	gunzip "$SRC_RPM_PATH"/primary.xml.gz
+	# retreive exact list of links to rpm packages except src.rpm and debuginfo ones
+	local RPM_URL_LIST=$(grep ".*<location.*\.rpm" $SRC_RPM_PATH/primary.xml | grep "src\.rpm" |  sed -r 's|^.*["']\(.*rpm\)['"].*$|\1|')
+	if [[ -z "$RPM_URL_LIST" ]]; then echo "There is no any SRC RPMs in repository. Exitting..."; rm -rf "$TEMP_DIR"; exit 1; fi
+	while [ -n "$1" -a -n "$2" ]; do
+		local pkg_link=$(echo "$RPM_URL_LIST" | grep "$2-[0-9]\+.*\.rpm" | sort -u | tail -n 1)
+		if [[ -z "$pkg_link" ]]; then echo "Specified repository doesn't contain $2 SRC RPM!"; continue; fi
+		wget -q --directory-prefix="$SRC_RPM_PATH" -N $REPO_URL/$pkg_link
+		shift 2
+	done
+}
+create_projects_from_src_rpm()
+{
+# Argument: list of pairs <gerrit project> <src rpm>  delimited by whitespaces
+# Example 1: create_projects_from_src_rpm openstack/nova openstack-nova openstack/neutron openstack-neutron openstack/python-novaclient python-novaclient ...
+# Example 2: 
+# export OPENSTACK_PROJECTS="openstack/nova openstack-nova openstack/neutron openstack-neutron openstack/python-novaclient python-novaclient ..."
+# create_projects_from_src_rpm $OPENSTACK_PROJECTS
+
+	while [ -n "$1" -a -n "$2" ]; do
+		# Unpack src rpm
+		pushd "$TEMP_UNZIP_DIR"
+		# Determine exact name of archive with source code
+		local TARBALL_NAMES=$(rpm2cpio "$SRC_RPM_PATH"/"${2%-[0-9]*-*}"-[0-9]* | cpio -t | grep $CODE_ARCHIVE_TYPE)
+		if [ -z "$TARBALL_NAMES" ] || ! rpm2cpio "$SRC_RPM_PATH"/"${2%-[0-9]*-*}"-[0-9]* | cpio -idmv --no-absolute-filenames $TARBALL_NAMES; then
+			echo "Cannot unpack $2 src rpm package. Skipping..."
+			rm -rf "$TEMP_UNZIP_DIR"/*
+			popd
+			shift 2
+			continue
+		fi
+		for curr_arch in $TARBALL_NAMES; do
+			$UNZIPPER $curr_arch
+		done
+		# Create empty Gerrit project
+		if ! ssh -p $GERRIT_PORT $GERRIT_URL gerrit create-project $1; then
+			echo -e "$GERRIT_PROJECT gerrit project already exists on Gerrit server. Exitting... If your Gerrit server has delete-projcet plugin installed, you can completely delete project, issuing command\n\
+ssh -p $GERRIT_PORT $GERRIT_URL deleteproject delete --yes-really-delete $GERRIT_PROJECT"
+			rm -rf "$TEMP_UNZIP_DIR"/*
+			popd
+			shift 2
+			continue
+		fi
+		if ! git clone ssh://$GERRIT_URL:$GERRIT_PORT/$1 $TEMP_GIT_DIR/$1; then
+			echo "Cannot create/clone $1 Gerrit project on/from $GERRIT_URL:$GERRIT_PORT. Exitting..."
+			rm -rf "$TEMP_UNZIP_DIR"/*
+			popd
+			shift 2
+			continue
+		fi
+		# Move unpacked sources to git repo
+		mv */* $TEMP_GIT_DIR/$1
+		popd
+		rm -rf "$TEMP_UNZIP_DIR"/*
+		pushd "$TEMP_GIT_DIR"/"$1"
+		git checkout -b master
+		git add .
+		git commit -m 'Initializing repository with code'
+		git push origin master
+		git checkout -b $FUEL_STABLE_BRANCH
+		git add .
+		git commit -m "Creating branch $FUEL_STABLE_BRANCH"
+		git push origin $FUEL_STABLE_BRANCH
+		popd
+		rm -rf "$TEMP_GIT_DIR"/"$1"
+		shift 2
+	done
+}
+copy_gerrit_build_projects()
+{
+# Argument: list of gerrit projects delimited by whitespaces to copy from SOURCE_GERRIT
+# Example 1: copy_gerrit_build_projects openstack/nova-build openstack/ceilometer-build ...
+# Example 2: 
+# export BUILD_PROJECTS="openstack/nova-build openstack/ceilometer-build ... "
+# copy_gerrit_build_projects $BUILD_PROJECTS
+	while [ -n "$1" ]; do
+		# Create empty Gerrit project
+		if ! git clone --bare $SOURCE_GERRIT/$1 $TEMP_GIT_DIR/$1; then
+			echo "Cannot clone $1 Gerrit project from source $SOURCE_GERRIT:$GERRIT_PORT. Exitting..."
+			shift
+			continue
+		fi
+		if ! ssh -p $GERRIT_PORT $GERRIT_URL gerrit create-project $1; then
+			echo -e "$1 gerrit project already exists on Gerrit server. Exitting... If your Gerrit server has delete-projcet plugin installed, you can completely delete project, issuing command\n\
+ssh -p $GERRIT_PORT $GERRIT_URL deleteproject delete --yes-really-delete $1"
+			shift
+			continue
+		fi
+		pushd "$TEMP_GIT_DIR"/"$1"
+		git remote set-url origin "ssh://$GERRIT_URL:$GERRIT_PORT/$1"
+		git push --all -u
+		git push --tags
+		popd
+		rm -rf "$TEMP_GIT_DIR"/"$1"/
+		shift
+	done
+}
+
+while getopts ":u:p:U:r:d:o:z:b:O:B:A:h" FLAG; do
+	case $FLAG in
+		u)
+			GERRIT_URL=$OPTARG
+			;;
+		p)
+			GERRIT_PORT=$OPTARG
+			;;
+		U)
+			SOURCE_GERRIT=$OPTARG
+			;;
+		r)
+			REPO_URL=$OPTARG
+			;;
+		d)
+			SRC_RPM_PATH=$OPTARG
+			;;
+		o)
+			TEMP_GIT_DIR=$OPTARG
+			;;
+		z)
+			TEMP_UNZIP_DIR=$OPTARG
+			;;
+		b)
+			FUEL_STABLE_BRANCH=$OPTARG
+			;;
+		O)
+			OPENSTACK_PROJECTS=$OPTARG
+			;;
+		B)
+			BUILD_PROJECTS=$OPTARG
+			;;
+		A)
+			CODE_ARCHIVE_TYPE=$OPTARG
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG. Use -h for help" >&2
+			exit 1
+			;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1
+			;;
+		h)
+			echo -e "This script initializes Gerrit server with projects that either contain source code from respective SRC RPMs or hosted on another Gerrit server.\n\nUsage: $(basename $0) -u <gerrit_ssh_url> -O <openstack_projects> -B <build_projects> [-p <gerrit_ssh_port>] [-U <source_gerrit_url>] [-r <repo_url>] [-d <src_rpm_path>] [-o <temp_git_dir>] [-z <temp_unzip_dir>] [-b <fuel_stable_branch>] [-A <code_archive_type>]\n\n\
+-u <gerrit_ssh_url> 		- Mandatory. URL of target Gerrit server where projects should be created. May be passed as GERRIT_URL env variable.\n\
+                                  You should specify user which belongs to Administrators group on Gerrit server.\n\
+                                  Format: <username>@<gerrit_server_hostname>\n\n\
+-O <openstack_projects>		- Mandatory. List of pairs <gerrit_project> <src_rpm_name> for projects with Openstack code.\n\
+				  Example: $(basename $0) ... -O \"openstack/<component-1> <src-rpm-component-1> openstack/<component-2> <src-rpm-component-2> ...\"\n\
+				  May be passed as OPENSTACK_PROJECTS env variable of the same format.\n\n\
+-B <build_projects>		- Mandatory. List of gerrit projects with build information (a.k.a. openstack/<component>-build) to copy from source Gerrit.\n\
+				  Example: $(basename $0) ... -B \"openstack/<component-1>-build openstack/<component-2>-build ...\"\n\
+				  May be passed as BUILD_PROJECTS env variable of the same format.\n\n\
+[-p <gerrit_ssh_port>]		- Optional. Gerrit server ssh port.Default value: $GERRIT_PORT\n\n\
+[-U <source_gerrit_url>] 	- Optional. Source Gerrit server URL from which projects will be copied. Default value: $SOURCE_GERRIT.\n\n\
+[-r <repo_url>]			- Optional. URL to repository with SRC RPMs. Default value: $REPO_URL.\n\n\
+[-d <src_rpm_path>]		- Optional. Path to directory where src rpms will be downloaded.\n\n\
+[-o <temp_git_dir>]		- Optional. Temporary directory for cloning and creating git repos. Default value: $TEMP_GIT_DIR.\n\
+				  WARNING: don't run few instances of script with the same temp dir!\n\n\
+[-z <temp_unzip_dir>]		- Optional. Temporary directory for unpacking source rpms. Default value: $TEMP_UNZIP_DIR.\n\
+				  WARNING: don't run few instances of script with the same temp dir!\n\n\
+[-b <fuel_stable_branch>]     	- Optional. Name of stable branch which should be created for Gerrit projects with Openstack code. Default value: $FUEL_STABLE_BRANCH.\n\n\
+[-A <code_archive_type>]	- Optional. Type of archive with source code inside src rpm package. Default value: $CODE_ARCHIVE_TYPE.\n\
+                                  Supported values: tar.gz tgz tar.bz2 tbz2 tar.xz txz gz gzip bz2 bzip2 zip xz lzma"
+			exit
+			;;
+	esac
+done
+shift $((OPTIND-1))
+if [[ -z "$GERRIT_URL" ]]; then
+	echo "Invalid usage. You should specify URL to Gerrit server. Use -h for help" >&2
+	exit 1
+fi
+case $CODE_ARCHIVE_TYPE in
+	tar.gz|tgz)
+		UNZIPPER="tar xzf"
+		;;
+	tar.bz2|tbz2)
+		UNZIPPER="tar xjf"
+		;;
+	tar.xz|txz)
+		UNZIPPER="tar xJf"
+		;;
+	gz|gzip)
+		UNZIPPER="gunzip"
+		;;
+	bz2|bzip2)
+		UNZIPPER="bunzip2"
+		;;
+	zip)
+		UNZIPPER="unzip"
+		;;
+	xz)
+		UNZIPPER="unxz"
+		;;
+	lzma)
+		UNZIPPER="unlzma"
+		;;
+	*)
+		echo "Unsupported archive type $CODE_ARCHIVE_TYPE."
+		exit 1
+		;;
+esac
+if ! which rpm2cpio > /dev/null; then
+	echo "Please, install rpm2cpio utility. It is needed for unpacking rpm package."
+	exit 1
+fi
+SRC_RPM_PATH=${SRC_RPM_PATH%/}
+TEMP_GIT_DIR=${TEMP_GIT_DIR%/}
+GERRIT_URL=${GERRIT_URL%/}
+SOURCE_GERRIT=${SOURCE_GERRIT%/}
+if [[ ! -d "$SRC_RPM_PATH" ]]; then
+	if ! mkdir -p "$SRC_RPM_PATH"; then echo "Temporary directory for downloading SRC RPMS wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf "$SRC_RPM_PATH"/*
+fi
+if [[ ! -d "$TEMP_GIT_DIR" ]]; then
+	if ! mkdir -p "$TEMP_GIT_DIR"; then echo "Temporary directory wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf "$TEMP_GIT_DIR"/*
+fi
+if [[ ! -d "$TEMP_UNZIP_DIR" ]]; then
+	if ! mkdir -p "$TEMP_UNZIP_DIR"; then echo "Temporary directory for extracting source tarball wasn't created. Exitting..."; exit 2; fi
+else
+	rm -rf "$TEMP_UNZIP_DIR"/*
+fi
+download_pkgs $OPENSTACK_PROJECTS
+create_projects_from_src_rpm $OPENSTACK_PROJECTS
+rm -rf "$SRC_RPM_PATH"
+rm -rf "$TEMP_UNZIP_DIR"
+copy_gerrit_build_projects $BUILD_PROJECTS
+rm -rf "$TEMP_GIT_DIR"
