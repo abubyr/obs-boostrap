@@ -190,6 +190,10 @@ if [[ -z "$GERRIT_URL" ]]; then
 	echo "Invalid usage. You should specify URL to Gerrit server. Use -h for help" >&2
 	exit 1
 fi
+if [[ -z "$OPENSTACK_PROJECTS" && -z "$BUILD_PROJECTS" ]]; then
+	echo "Invalid usage. You should specify lists of openstack and openstack-build projects for importing. Use -h for help" >&2
+	exit 1
+fi
 case $CODE_ARCHIVE_TYPE in
 	tar.gz|tgz)
 		UNZIPPER="tar xzf"
