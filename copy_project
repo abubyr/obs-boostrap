@@ -10,8 +10,38 @@ OBS_DST=$OBS_DEST
 OBS_SRC=$OBS_SOURCE
 PRJ=$PROJECT
 PACKAGE_LIST=$PKG_LIST
-
-while getopts ":s:d:p:l:h" FLAG; do
+OBS_DST_USER="Admin"
+OBS_DST_PASS="opensuse"
+OBS_SRC_USER="Admin"
+OBS_SRC_PASS="opensuse"
+add_obs_credentials()
+{
+	if [ "$#" -ne 3 ]; then
+		echo "Invalid usage of $(basename $0) function! Function requires exactly 3 arguments: obs_url, obs_user, obs_password"
+		exit 1
+	fi
+	local OBS_URL=$1
+	local USER=$2
+	local PASS=$3
+	if ! grep -q $OBS_URL $HOME/.oscrc; then 
+		if ! grep -q "\[general\]" $HOME/.oscrc; then echo "[general]" >> $HOME/.oscrc; fi 
+		cat >> $HOME/.oscrc <<OSCRCEOF
+[$OBS_URL]
+user = $USER
+pass = $PASS
+OSCRCEOF
+	fi
+	local OBS_URL_IP=${OBS_URL#*//}
+	local OBS_URL_IP=${OBS_URL_IP%/*}
+	local OBS_URL_PORT=${OBS_URL_IP##*:}
+	local OBS_URL_IP=${OBS_URL_IP%:*}
+	[[ -z "$OBS_URL_PORT" ]] && OBS_URL_PORT='443'
+	# automatically trust to OBS server certificate if not made yet
+	if [ ! -f $HOME/.config/osc/trusted-certs/"$OBS_URL_IP"_"$OBS_URL_PORT".* ]; then
+		echo 2 | osc -A $OBS_URL ls > /dev/null 2>&1
+	fi
+}
+while getopts ":s:d:t:l:U:P:u:p:h" FLAG; do
 	case $FLAG in
 		s)
 			OBS_SRC=$OPTARG
@@ -19,11 +49,23 @@ while getopts ":s:d:p:l:h" FLAG; do
 		d)
 			OBS_DST=$OPTARG
 			;;
-		p)
+		t)
 			PRJ=$OPTARG
 			;;
 		l)
 			PACKAGE_LIST="$OPTARG"
+			;;
+		U)
+			OBS_SRC_USER=$OPTARG
+			;;
+		u)
+			OBS_DST_USER=$OPTARG
+			;;
+		P)
+			OBS_SRC_PASS=$OPTARG
+			;;
+		p)
+			OBS_DST_PASS=$OPTARG
 			;;
 		\?)
 			echo "Invalid option: -$OPTARG. Use -h for help" >&2
@@ -34,12 +76,16 @@ while getopts ":s:d:p:l:h" FLAG; do
 			exit 1
 			;;
 		h)
-			echo -e "This script is intended to copy projects from source OBS server to destination one. You can copy either all OBS packages contained in specified project or only part of them.\n\nUsage: $(basename $0) [-s <source_obs_url>] [-d <dest_obs_url>] [-p <obs_project>] [-l <package_list>] \n\n \
-[-s <source_obs_url]		- Optional. Source OBS server API URL. Default value: env variable OBS_SOURCE\n \
-[-d <dest_obs_url]		- Optional. Destination OBS server API URL. Default value: env variable OBS_DEST\n \
-[-p <obs_project>]     		- Optional. Project to copy. Default value: env variable PROJECT.\n \
-[-l <package_list>]		- Optional. List of OBS packages to copy from project. Default value: env variable PKG_LIST.\n \
-				  For copying all packages from project, specify PKG_LIST=\$(osc -A \$OBS_SOURCE ls \$PROJECT) or pass derived list as script argument."
+			echo -e "This script is intended to copy projects from source OBS server to destination one. You can copy either all OBS packages contained in specified project or only part of them.\n\nUsage: $(basename $0) [-s <source_obs_url>] [-d <dest_obs_url>] [-t <obs_project>] [-l <package_list>] [-U <obs_src_user>] [-P <obs_src_password>] [-u <obs_dst_user>] [-p <obs_dst_password>]\n\n\
+[-s <source_obs_url]		- Optional. Source OBS server API URL. Default value: env variable OBS_SOURCE\n\
+[-d <dest_obs_url]		- Optional. Destination OBS server API URL. Default value: env variable OBS_DEST\n\
+[-t <obs_project>]     		- Optional. Project to copy. Default value: env variable PROJECT.\n\
+[-l <package_list>]		- Optional. List of OBS packages to copy from project. Default value: env variable PKG_LIST.\n\
+				  For copying all packages from project, specify PKG_LIST=\$(osc -A \$OBS_SOURCE ls \$PROJECT) or pass derived list as script argument.\n\
+[-U <obs_src_user>]		- Optional. OBS API admin user for source OBS . Default value: Admin.\n\
+[-P <obs_src_password>]		- Optional. OBS API admin user password for source OBS. Default value: opensuse\n\
+[-u <obs_dst_user>]		- Optional. OBS API admin user for destination OBS. Default value: Admin.\n\
+[-p <obs_dst_password>]		- Optional. OBS API admin user password for destination OBS. Default value: opensuse."
 			exit
 			;;
 	esac
@@ -50,7 +96,8 @@ if [[ -z "$OBS_SRC" || -z "$OBS_DST" || -z "$PRJ" || -z "$PACKAGE_LIST" ]]; then
 	echo -e "Invalid usage. Set up environment variables or pass arguments to script via CLI. See help (-h) for more information."
 	exit 1
 fi
-
+add_obs_credentials $OBS_SRC $OBS_SRC_USER $OBS_SRC_PASS
+add_obs_credentials $OBS_DST $OBS_DST_USER $OBS_DST_PASS
 echo -e "######################################\n
 Link to source OBS (OBS_SRC) = $OBS_SRC. Link to destination OBS (OBS_DST) = $OBS_DST. Project to copy (PRJ) = $PRJ\n
 ######################################\n"
