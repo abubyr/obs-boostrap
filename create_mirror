@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 # If you need to remove some packages from repo, specify them in environment variable PKG_REMOVE_LIST
 download_pkgs(){
 	wget --directory-prefix="$TEMP_DIR" --reject index.html* --mirror --no-parent -nd $REPO_URL
@@ -62,7 +62,7 @@ while getopts ":u:t:p:a:c:d:v:O:hAX" FLAG; do
 				  Ubuntu - /srv/obs/repos/local-fuel-<fuel_version>-ubuntu-deps.\n \
 				  CentOS - /srv/obs/repos/local-fuel-<fuel_version>-centos-deps.\n \
 [-a <arch>]          		- Optional. Repository architecture. Default value: x86_64.\n \
-[-O <temp_download_dir>]	- Optional. Temporary directory for downloading packages. Default value: /data/imports.\n \
+[-O <temp_download_dir>]	- Optional. Temporary directory for downloading packages. Default value: /data/imports-<random_value>.\n \
 				  WARNING: don't run few instances of script with the same temp dir!\n \
 [-d <ubuntu_distro>=precise]	- Optional. UBUNTU ONLY: Ubuntu distribution (code name). Default value: precise.\n \
 [-c <ubuntu_repo_component>=main]-Optional. UBUNTU ONLY: Ubuntu repo component, e.g. main, universe, multiverse etc. Default value: main.\n \
@@ -81,7 +81,7 @@ fi
 [[ -z "$REPO_TYPE" ]] && REPO_TYPE="RPM"
 [[ -z "$FUEL_VERSION" ]] && FUEL_VERSION=5.1
 if [[ -z "$TEMP_DIR" ]]; then
-	TEMP_DIR="/data/imports"
+	TEMP_DIR="/data/imports-$RANDOM"
 	echo -e "You didn't specify full path to destination directory. $TEMP_DIR will be used as default repo location\n"
 fi
 TEMP_DIR=${TEMP_DIR%/}
